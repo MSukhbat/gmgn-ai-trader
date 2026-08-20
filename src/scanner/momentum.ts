@@ -148,7 +148,10 @@ export function analyzeMomentum(token: TokenData): MomentumResult {
     saveSnapshots(snapshots);
 
     return {
-      momentumScore: 0,
+      // A missing snapshot is unknown momentum, not negative momentum. New
+      // creations are commonly seen only once, so scoring them as zero makes
+      // an otherwise viable first observation unable to reach the entry gate.
+      momentumScore: 50,
 
       signal: "NEUTRAL",
 
@@ -160,7 +163,7 @@ export function analyzeMomentum(token: TokenData): MomentumResult {
 
       liquidityChange: 0,
 
-      reasons: ["Waiting for historical data"],
+      reasons: ["No historical data yet; using neutral momentum"],
     };
   }
 

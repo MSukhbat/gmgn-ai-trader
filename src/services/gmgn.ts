@@ -15,6 +15,8 @@ interface GMGNToken {
   liquidity?: number;
 
   volume_24h?: number;
+  volume_1h?: number;
+  volume_5m?: number;
   buys_24h?: number;
   sells_24h?: number;
   swaps_24h?: number;
@@ -70,6 +72,8 @@ function normalizeToken(raw: GMGNToken): TokenData {
     // Volume
 
     volume24h: raw.volume_24h ?? 0,
+    volume1h: raw.volume_1h ?? 0,
+    volume5m: raw.volume_5m ?? 0,
 
     // Trades
 
@@ -206,6 +210,62 @@ function extractTokens(data: unknown): GMGNToken[] {
   }
 
   return [];
+}
+
+function toPositiveNumber(value: unknown): number | undefined {
+  const numberValue =
+    typeof value === "number" || typeof value === "string"
+      ? Number(value)
+      : Number.NaN;
+
+  return Number.isFinite(numberValue) && numberValue > 0
+    ? numberValue
+    : undefined;
+}
+
+/** Fetches the latest price for an already-open position. */
+export async function getTokenPrice(
+  address: string,
+): Promise<number | undefined> {
+  // Token addresses originate from GMGN, but validating them here also keeps
+  // the command passed through cmd.exe free of shell metacharacters.
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+    console.error(`❌ Invalid Solana token address: ${address}`);
+    return undefined;
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      "cmd.exe",
+      [
+        "/d",
+        "/s",
+        "/c",
+        `gmgn-cli.cmd token info --chain sol --address ${address} --raw`,
+      ],
+      {
+        windowsHide: true,
+        maxBuffer: 20 * 1024 * 1024,
+      },
+    );
+
+    if (stderr.trim()) {
+      console.log("GMGN price stderr:", stderr.trim());
+    }
+
+    const data = parseGMGNOutput(stdout);
+
+    if (!data || typeof data !== "object") {
+      return undefined;
+    }
+
+    const price = (data as { price?: { price?: unknown } }).price?.price;
+
+    return toPositiveNumber(price);
+  } catch (error) {
+    console.error(`❌ Could not fetch current price for ${address}:`, error);
+    return undefined;
+  }
 }
 
 export async function getNewTokens(): Promise<TokenData[]> {

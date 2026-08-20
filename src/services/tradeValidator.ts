@@ -1,51 +1,92 @@
 import { TokenData } from "../types/token.js";
-import { scoreToken } from "../engine/scoreToken.js";
-import { tradingConfig } from "../config/trading.js";
+import { TRADING_CONFIG } from "../config/trading.js";
 
-export interface TradeValidation {
-  approved: boolean;
-  score: number;
-  reason: string;
+interface ValidateTradeInput {
+  token: TokenData;
+  entryScore: number;
+  buyPressure: number;
 }
 
-export function validateTrade(token: TokenData): TradeValidation {
-  const score = scoreToken(token);
+export interface TradeValidation {
+  valid: boolean;
+  reasons: string[];
+}
 
-  if (score < tradingConfig.minEntryScore) {
-    return {
-      approved: false,
-      score,
-      reason: `Score too low: ${score}`,
-    };
+export default function validateTrade({
+  token,
+  entryScore,
+  buyPressure,
+}: ValidateTradeInput): TradeValidation {
+  const reasons: string[] = [];
+
+  // ============================================
+  // ENTRY SCORE
+  // ============================================
+
+  if (entryScore < TRADING_CONFIG.minEntryScore) {
+    reasons.push(
+      `Entry score too low (${entryScore} < ${TRADING_CONFIG.minEntryScore})`,
+    );
   }
 
-  if (token.liquidity <= 0) {
-    return {
-      approved: false,
-      score,
-      reason: "No liquidity",
-    };
+  // ============================================
+  // BUY PRESSURE
+  // ============================================
+
+  if (buyPressure < TRADING_CONFIG.minBuyPressure) {
+    reasons.push(`Buy pressure too low (${(buyPressure * 100).toFixed(1)}%)`);
   }
 
-  if (!token.mintRenounced) {
-    return {
-      approved: false,
-      score,
-      reason: "Mint authority is not renounced",
-    };
+  // ============================================
+  // LIQUIDITY
+  // ============================================
+
+  if (token.liquidity < TRADING_CONFIG.minLiquidityUsd) {
+    reasons.push(`Liquidity too low ($${token.liquidity.toFixed(2)})`);
   }
 
-  if (!token.freezeRenounced) {
-    return {
-      approved: false,
-      score,
-      reason: "Freeze authority is not renounced",
-    };
+  // ============================================
+  // VOLUME
+  // ============================================
+
+  if (token.volume24h < TRADING_CONFIG.minVolumeUsd) {
+    reasons.push(`Volume too low ($${token.volume24h.toFixed(2)})`);
   }
+
+  // ============================================
+  // HOLDERS
+  // ============================================
+
+  if (token.holders < TRADING_CONFIG.minHolders) {
+    reasons.push(`Too few holders (${token.holders})`);
+  }
+
+  // ============================================
+  // RISK
+  // ============================================
+
+  if (token.rugRatio > TRADING_CONFIG.maxRugRatio) {
+    reasons.push(`Rug ratio too high (${(token.rugRatio * 100).toFixed(1)}%)`);
+  }
+
+  if (token.insiderRate > TRADING_CONFIG.maxInsiderRate) {
+    reasons.push(
+      `Insider rate too high (${(token.insiderRate * 100).toFixed(1)}%)`,
+    );
+  }
+
+  if (token.bundlerRate > TRADING_CONFIG.maxBundlerRate) {
+    reasons.push(
+      `Bundler rate too high (${(token.bundlerRate * 100).toFixed(1)}%)`,
+    );
+  }
+
+  // ============================================
+  // RESULT
+  // ============================================
 
   return {
-    approved: true,
-    score,
-    reason: "Trade approved",
+    valid: reasons.length === 0,
+    reasons,
   };
 }

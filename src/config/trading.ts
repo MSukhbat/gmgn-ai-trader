@@ -1,17 +1,34 @@
-export const tradingConfig = {
-  capitalUsd: 10,
+export const TRADING_CONFIG = {
+  mode: "PAPER" as "PAPER" | "LIVE",
 
-  positionSizeUsd: 2,
+  paperAmountUsd: 1,
 
-  minEntryScore: 75,
+  stopLossPercent: 10,
 
-  maxOpenPositions: 2,
+  partialTakeProfitTargets: [
+    { profitPercent: 10, sellPercent: 20 },
+    { profitPercent: 20, sellPercent: 20 },
+    { profitPercent: 30, sellPercent: 20 },
+  ],
 
-  maxSlippageBps: 500,
+  trailingStartPercent: 40,
+  trailingStopPercent: 15,
 
-  stopLossPercent: 12,
+  scanIntervalMs: 10_000,
 
-  takeProfitPercent: 25,
+  minEntryScore: 65,
 
-  paperTrade: true,
+  minBuyPressure: 0.55,
+
+  minLiquidityUsd: 1000,
+
+  minVolumeUsd: 1000,
+
+  minHolders: 30,
+
+  maxRugRatio: 0.2,
+
+  maxInsiderRate: 0.2,
+
+  maxBundlerRate: 0.3,
 };

@@ -1,29 +1,53 @@
 import { getNewTokens } from "./services/gmgn.js";
+
 import { scoreToken } from "./scanner/scoring.js";
 import { analyzeMomentum } from "./scanner/momentum.js";
 import { calculateEntry } from "./entry.js";
 import { trackToken } from "./scanner/tracker.js";
 
+import { executeBuy, getOpenPositions } from "./services/swapExecutor.js";
+
+import validateTrade from "./services/tradeValidator.js";
+
+import {
+   monitorPositions,
+  printOpenPositions,
+} from "./services/positionMonitor.js";
+
+
+import { TRADING_CONFIG } from "./config/trading.js";
+
 async function scanner() {
-  console.log("🚀 Solana Scanner started...\n");
+  console.log("\n");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🚀 SOLANA AI TRADER");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(`Mode: ${TRADING_CONFIG.mode}`);
+  console.log(`Paper Amount: $${TRADING_CONFIG.paperAmountUsd}`);
 
   try {
-    // ============================================
+    // =================================================
     // 1. FETCH
-    // ============================================
+    // =================================================
 
     const tokens = await getNewTokens();
 
-    console.log(`\n📊 Received ${tokens.length} normalized tokens`);
+    console.log(`\n📊 Received ${tokens.length} tokens`);
 
     if (tokens.length === 0) {
-      console.log("⚠️ No tokens received from GMGN.");
+      console.log("⚠️ No tokens received.");
       return;
     }
 
-    // ============================================
-    // 2. SCORE + MOMENTUM + ENTRY
-    // ============================================
+    // =================================================
+    // 2. MONITOR EXISTING POSITIONS FIRST
+    // =================================================
+
+    await monitorPositions(tokens);
+
+    // =================================================
+    // 3. ANALYZE
+    // =================================================
 
     const analyzedTokens = tokens.map((token) => {
       const history = trackToken(token);
@@ -48,127 +72,17 @@ async function scanner() {
       };
     });
 
-    // ============================================
-    // 3. SORT BY ENTRY SCORE
-    // ============================================
+    // =================================================
+    // 4. SORT
+    // =================================================
 
     const rankedTokens = [...analyzedTokens].sort(
       (a, b) => b.entry.entryScore - a.entry.entryScore,
     );
 
-    // ============================================
-    // 4. ENTRY CANDIDATES
-    // ============================================
-
-    const buyList = rankedTokens.filter(
-      (result) =>
-        result.entry.signal === "STRONG_BUY" || result.entry.signal === "BUY",
-    );
-
-    const watchList = rankedTokens.filter(
-      (result) => result.entry.signal === "WATCH",
-    );
-
-    const rejectedCount = rankedTokens.filter(
-      (result) => result.entry.signal === "REJECT",
-    ).length;
-
-    // ============================================
-    // 5. TOP 10
-    // ============================================
-
-    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("🏆 TOP 10 ENTRY CANDIDATES");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-    for (const [index, result] of rankedTokens.slice(0, 10).entries()) {
-      const token = result.token;
-      const momentum = result.momentum;
-      const entry = result.entry;
-
-      console.log(`\n#${index + 1} ${token.symbol}`);
-
-      console.log(
-        `Entry Score: ${entry.entryScore}/100 | Signal: ${getSignalEmoji(
-          entry.signal,
-        )} ${entry.signal}`,
-      );
-
-      console.log(`Base Score: ${result.score}/100 | Risk: ${result.risk}`);
-
-      console.log(
-        `Momentum: ${momentum.momentumScore}/100 | ${momentum.signal}`,
-      );
-      console.log(`Snapshots: ${result.history.snapshots.length}`);
-      console.log(`Entry Score: ${result.entry.entryScore}/100`);
-      console.log(`Entry Signal: ${result.entry.signal}`);
-      console.log(`Entry Reasons: ${result.entry.reasons.join(", ")}`);
-      console.log(`Address: ${token.address}`);
-
-      console.log(`MC: $${token.marketCap.toFixed(2)}`);
-
-      console.log(`Liquidity: $${token.liquidity.toFixed(2)}`);
-
-      console.log(`Volume 24h: $${token.volume24h.toFixed(2)}`);
-
-      console.log(`Holders: ${token.holders}`);
-
-      console.log(`Buys/Sells: ${token.buys24h}/${token.sells24h}`);
-
-      console.log(`Buy Pressure: ${(result.buyPressure * 100).toFixed(1)}%`);
-
-      console.log(`Age: ${token.ageMinutes.toFixed(1)} min`);
-
-      // ============================================
-      // MOMENTUM CHANGES
-      // ============================================
-
-      console.log(`Volume Change: ${momentum.volumeChange.toFixed(1)}%`);
-
-      console.log(`Holder Change: ${momentum.holderChange.toFixed(1)}%`);
-
-      console.log(`MC Change: ${momentum.marketCapChange.toFixed(1)}%`);
-
-      console.log(`Liquidity Change: ${momentum.liquidityChange.toFixed(1)}%`);
-
-      // ============================================
-      // RISK METRICS
-      // ============================================
-
-      console.log(`Bundler: ${(token.bundlerRate * 100).toFixed(2)}%`);
-
-      console.log(`Insider: ${(token.insiderRate * 100).toFixed(2)}%`);
-
-      console.log(`Top 10: ${(token.top10HolderRate * 100).toFixed(2)}%`);
-
-      console.log(`Sniper: ${(token.sniperHoldRate * 100).toFixed(2)}%`);
-
-      console.log(`Mint Renounced: ${token.mintRenounced ? "✅" : "❌"}`);
-
-      console.log(`Freeze Renounced: ${token.freezeRenounced ? "✅" : "❌"}`);
-
-      // ============================================
-      // REASONS
-      // ============================================
-
-      if (entry.reasons.length > 0) {
-        console.log(`Entry Reasons: ${entry.reasons.join(", ")}`);
-      }
-
-      if (momentum.reasons.length > 0) {
-        console.log(`Momentum Reasons: ${momentum.reasons.join(", ")}`);
-      }
-
-      if (result.reasons.length > 0) {
-        console.log(`Score Reasons: ${result.reasons.join(", ")}`);
-      }
-
-      console.log("────────────────────────────");
-    }
-
-    // ============================================
-    // BUY SIGNALS
-    // ============================================
+    // =================================================
+    // 5. BUY CANDIDATES
+    // =================================================
 
     const buySignals = rankedTokens.filter(
       (result) =>
@@ -181,163 +95,128 @@ async function scanner() {
 
     if (buySignals.length === 0) {
       console.log("❌ No BUY signals.");
-    } else {
-      for (const [index, result] of buySignals.slice(0, 10).entries()) {
-        console.log(`\n🔥 #${index + 1} ${result.token.symbol}`);
 
-        console.log(`Entry Score: ${result.entry.entryScore}/100`);
+      console.log("\nTop candidates:");
 
-        console.log(`Signal: ${result.entry.signal}`);
-
-        console.log(`Base Score: ${result.score}/100`);
-
-        console.log(`Risk: ${result.risk}`);
-
-        console.log(`Momentum: ${result.momentum.momentumScore}/100`);
-
-        console.log(`Buy Pressure: ${(result.buyPressure * 100).toFixed(1)}%`);
-
-        console.log(`Liquidity: $${result.token.liquidity.toFixed(2)}`);
-
-        console.log(`Market Cap: $${result.token.marketCap.toFixed(2)}`);
-
-        console.log(`Volume: $${result.token.volume24h.toFixed(2)}`);
-
-        console.log(`Holders: ${result.token.holders}`);
-
-        console.log(`Bundler: ${(result.token.bundlerRate * 100).toFixed(2)}%`);
-
+      for (const result of rankedTokens.slice(0, 3)) {
         console.log(
-          `Sniper: ${(result.token.sniperHoldRate * 100).toFixed(2)}%`,
+          `• ${result.token.symbol}: entry ${result.entry.entryScore}/100, ` +
+            `score ${result.score}/100, risk ${result.risk}`,
         );
-
-        console.log(
-          `Top 10: ${(result.token.top10HolderRate * 100).toFixed(2)}%`,
-        );
-
-        console.log(`Mint: ${result.token.mintRenounced ? "✅" : "❌"}`);
-
-        console.log(`Freeze: ${result.token.freezeRenounced ? "✅" : "❌"}`);
-
-        console.log(`Reasons: ${result.entry.reasons.join(", ")}`);
-
-        console.log(`Address: ${result.token.address}`);
-
-        console.log("────────────────────────────");
+        console.log(`  ${result.entry.reasons.slice(0, 3).join("; ")}`);
       }
     }
-    // ============================================
-    // ============================================
-    // 7. WATCHLIST
-    // ============================================
+
+    // =================================================
+    // 6. VALIDATE + PAPER BUY
+    // =================================================
+
+    for (const result of buySignals.slice(0, 10)) {
+      const token = result.token;
+
+      console.log(`\n🔥 ${token.symbol}`);
+
+      console.log(`Entry Score: ${result.entry.entryScore}/100`);
+
+      console.log(`Signal: ${result.entry.signal}`);
+
+      console.log(`Buy Pressure: ${(result.buyPressure * 100).toFixed(1)}%`);
+
+      console.log(`Liquidity: $${token.liquidity.toFixed(2)}`);
+
+      console.log(`Volume: $${token.volume24h.toFixed(2)}`);
+
+      // ===============================================
+      // VALIDATOR
+      // ===============================================
+
+      const validation = validateTrade({
+        token,
+
+        entryScore: result.entry.entryScore,
+
+        buyPressure: result.buyPressure,
+      });
+
+      if (!validation.valid) {
+        console.log("❌ TRADE REJECTED");
+
+        console.log(`Reasons: ${validation.reasons.join(", ")}`);
+
+        continue;
+      }
+
+      console.log("✅ TRADE VALIDATED");
+
+      // ===============================================
+      // BUY
+      // ===============================================
+
+      await executeBuy({
+        token,
+
+        amountUsd: TRADING_CONFIG.paperAmountUsd,
+
+        entryScore: result.entry.entryScore,
+      });
+    }
+
+    // =================================================
+    // 7. OPEN POSITIONS
+    // =================================================
+
+    printOpenPositions();
+
+    // =================================================
+    // 8. SUMMARY
+    // =================================================
+
+    const openPositions = getOpenPositions();
 
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("👀 WATCHLIST");
+    console.log("📊 SUMMARY");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    if (watchList.length === 0) {
-      console.log("❌ No WATCH tokens.");
-    } else {
-      for (const [index, result] of watchList.slice(0, 10).entries()) {
-        console.log(`\n#${index + 1} ${result.token.symbol}`);
-
-        console.log(`Entry Score: ${result.entry.entryScore}/100`);
-        console.log(`Entry Signal: ${result.entry.signal}`);
-
-        console.log(`Scanner Score: ${result.score}/100`);
-        console.log(`Risk: ${result.risk}`);
-
-        console.log(`Momentum: ${result.momentum.momentumScore}/100`);
-
-        console.log(`Momentum Signal: ${result.momentum.signal}`);
-
-        console.log(`Buy Pressure: ${(result.buyPressure * 100).toFixed(1)}%`);
-
-        console.log(`Liquidity: $${result.token.liquidity.toFixed(2)}`);
-
-        console.log(`Market Cap: $${result.token.marketCap.toFixed(2)}`);
-
-        console.log(`Volume: $${result.token.volume24h.toFixed(2)}`);
-
-        console.log(`Holders: ${result.token.holders}`);
-
-        console.log(`Bundler: ${(result.token.bundlerRate * 100).toFixed(2)}%`);
-
-        console.log(
-          `Sniper: ${(result.token.sniperHoldRate * 100).toFixed(2)}%`,
-        );
-
-        console.log(
-          `Top 10: ${(result.token.top10HolderRate * 100).toFixed(2)}%`,
-        );
-
-        console.log(`Mint: ${result.token.mintRenounced ? "✅" : "❌"}`);
-
-        console.log(`Freeze: ${result.token.freezeRenounced ? "✅" : "❌"}`);
-
-        if (result.entry.reasons.length > 0) {
-          console.log(`Entry Reasons: ${result.entry.reasons.join(", ")}`);
-        }
-
-        if (result.momentum.reasons.length > 0) {
-          console.log(
-            `Momentum Reasons: ${result.momentum.reasons.join(", ")}`,
-          );
-        }
-
-        console.log(`Address: ${result.token.address}`);
-
-        console.log("────────────────────────────");
-      }
-    }
-
-    // ============================================
-    // 8. SUMMARY
-    // ============================================
+    console.log(`🪙 Tokens: ${tokens.length}`);
 
     console.log(`🔥 Buy signals: ${buySignals.length}`);
-    console.log(`👀 Watchlist: ${watchList.length}`);
-    console.log(`🚫 Rejected: ${rejectedCount}`);
+
+    console.log(`📂 Open positions: ${openPositions.length}`);
+
+    console.log(`💵 Position size: $${TRADING_CONFIG.paperAmountUsd}`);
+
+    console.log("🎯 TP: 20% at +10%, +20%, +30%");
+
+    console.log(
+      `🟣 Trailing: starts +${TRADING_CONFIG.trailingStartPercent}%, ` +
+        `${TRADING_CONFIG.trailingStopPercent}% from peak`,
+    );
+
+    console.log(`🛑 SL: -${TRADING_CONFIG.stopLossPercent}%`);
   } catch (error) {
     console.error("\n❌ Scanner error:");
+
     console.error(error);
   }
 }
 
-// ============================================
-// SIGNAL EMOJI
-// ============================================
-
-function getSignalEmoji(signal: "STRONG_BUY" | "BUY" | "WATCH" | "REJECT") {
-  switch (signal) {
-    case "STRONG_BUY":
-      return "🚀";
-
-    case "BUY":
-      return "🟢";
-
-    case "WATCH":
-      return "👀";
-
-    case "REJECT":
-      return "🚫";
-
-    default:
-      return "";
-  }
-}
-
-// ============================================
+// =====================================================
 // CONTINUOUS SCANNER
-// ============================================
+// =====================================================
 
 async function startScanner() {
+  console.log("🤖 AI TRADING ENGINE STARTING...\n");
+
   while (true) {
     await scanner();
 
-    console.log("⏳ Next scan in 10 seconds...\n");
+    console.log(
+      `\n⏳ Next scan in ${TRADING_CONFIG.scanIntervalMs / 1000} seconds...\n`,
+    );
 
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    await new Promise((resolve) =>
+      setTimeout(resolve, TRADING_CONFIG.scanIntervalMs),
+    );
   }
 }
 

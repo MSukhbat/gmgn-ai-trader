@@ -7,7 +7,7 @@ export interface TokenScore {
 
   risk: "LOW" | "MEDIUM" | "HIGH";
 
-  decision: "WATCH" | "REJECT";
+  decision: "BUY" | "WATCH" | "REJECT";
 
   reasons: string[];
 
@@ -311,7 +311,15 @@ export function scoreToken(token: TokenData): TokenScore {
     risk = "HIGH";
   }
 
-  const decision = score >= 55 ? "WATCH" : "REJECT";
+  let decision: "BUY" | "WATCH" | "REJECT";
+
+  if (score >= 75 && buyPressure >= 0.6) {
+    decision = "BUY";
+  } else if (score >= 55) {
+    decision = "WATCH";
+  } else {
+    decision = "REJECT";
+  }
 
   return {
     token,

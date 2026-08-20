@@ -8,6 +8,8 @@ export interface TokenData {
   liquidity: number;
 
   volume24h: number;
+  volume1h: number;
+  volume5m: number;
   buys24h: number;
   sells24h: number;
   swaps24h: number;
