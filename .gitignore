@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+*.pem
+
+data/token-history.json
+gmgn-raw.json
+
+dist/
+build/
